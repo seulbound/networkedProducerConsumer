@@ -55,7 +55,7 @@ public class Consumer {
 
     public static void main(String[] args) throws IOException, InterruptedException {
         if (args.length < 3) {
-            System.err.println("Usage: Consumer <port> <numThreads> <destination_folder>");
+            System.err.println("Usage: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Consumer <port> <threads> <destinationFolder>");
             System.exit(1);
         }
         int port = Integer.parseInt(args[0]);
@@ -75,7 +75,7 @@ public class Consumer {
 
         @Override
         public StreamObserver<FileChunk> uploadFile(final StreamObserver<UploadStatus> responseObserver) {
-            return new StreamObserver<FileChunk>() {
+            return new StreamObserver<>() {
                 private OutputStream outputStream;
                 private String fileName;
 
@@ -84,7 +84,7 @@ public class Consumer {
                     try {
                         if (fileName == null) {
                             fileName = value.getFileName();
-                            if (fileName == null || fileName.isEmpty()) {
+                            if (fileName.isEmpty()) {
                                 responseObserver.onError(new StatusRuntimeException(Status.INVALID_ARGUMENT.withDescription("Filename is missing in the first chunk")));
                                 return;
                             }

@@ -46,7 +46,7 @@ public class Producer {
                 if (file.isFile()) {
                     try {
                         Path path = Paths.get(file.getAbsolutePath());
-                        StreamObserver<UploadStatus> responseObserver = new StreamObserver<UploadStatus>() {
+                        StreamObserver<UploadStatus> responseObserver = new StreamObserver<>() {
                             @Override
                             public void onNext(UploadStatus value) {
                                 System.out.println("Upload status: " + value.getMessage());
@@ -100,7 +100,7 @@ public class Producer {
 
     public static void main(String[] args) throws InterruptedException {
         if (args.length < 4) {
-            System.err.println("Usage: Producer <host> <port> <numThreads> <folder1> [<folder2> ...]");
+            System.err.println("Usage: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer <server> <port> <threads> <sourceFolder>");
             System.exit(1);
         }
 
@@ -114,7 +114,6 @@ public class Producer {
             producer.sendFile(args[i]);
         }
 
-        producer.executor.awaitTermination(1, TimeUnit.HOURS);
         producer.shutdown();
     }
 }

@@ -4,6 +4,6 @@ To run the program:
 
 Build with mvn clean install
 
-Run the consumer with: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Consumer 8080 <threads> <destination folder>
+Run the consumer with: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Consumer <port> <threads> <destination folder>
 
-Run the producer with: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer localhost 8080 <threads> <source folder>
+Run the producer with: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer <server> <port> <threads> <source folder>
