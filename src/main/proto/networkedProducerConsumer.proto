@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package networkedProducerConsumer;
+
+option java_multiple_files = true;
+option java_package = "org.example.networkedProducerConsumer";
+option java_outer_classname = "NetworkedProducerConsumerProto";
+
+service NetworkedProducerConsumerService {
+  rpc uploadFile(stream FileChunk) returns (UploadStatus);
+}
+
+message FileChunk {
+  string fileName = 1;
+  bytes data = 2;
+}
+
+message UploadStatus {
+  bool success = 1;
+  string message = 2;
+}
