@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import org.apache.tika.Tika;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,6 +24,7 @@ public class Producer {
     private final ManagedChannel channel;
     private final NetworkedProducerConsumerServiceGrpc.NetworkedProducerConsumerServiceStub asyncStub;
     private final ExecutorService executor;
+    private final Tika tika;
 
     public Producer(String host, int port, int numThreads) {
         this.channel = ManagedChannelBuilder.forAddress(host, port)
@@ -30,6 +32,7 @@ public class Producer {
                 .build();
         this.asyncStub = NetworkedProducerConsumerServiceGrpc.newStub(channel);
         this.executor = Executors.newFixedThreadPool(numThreads);
+        this.tika = new Tika();
     }
 
     public void shutdown() throws InterruptedException {
@@ -51,6 +54,17 @@ public class Producer {
 
             for (File file : files) {
                 if (file.isFile()) {
+                    try {
+                        String mimeType = tika.detect(file);
+                        if (mimeType == null || !mimeType.startsWith("video/")) {
+                            System.out.println("Skipping non-video file: " + file.getName() + " (type: " + mimeType + ")");
+                            continue;
+                        }
+                    } catch (IOException e) {
+                        System.err.println("Error detecting file type for " + file.getName() + ", skipping: " + e.getMessage());
+                        continue;
+                    }
+
                     final CountDownLatch finishLatch = new CountDownLatch(1);
                     StreamObserver<UploadStatus> responseObserver = new StreamObserver<>() {
                         @Override

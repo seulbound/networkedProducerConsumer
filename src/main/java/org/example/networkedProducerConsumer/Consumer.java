@@ -5,6 +5,8 @@ import io.grpc.ServerBuilder;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
+import org.apache.tika.Tika;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -68,9 +70,11 @@ public class Consumer {
 
     private static class NetworkedProducerConsumerServiceImpl extends NetworkedProducerConsumerServiceGrpc.NetworkedProducerConsumerServiceImplBase {
         private final Path destination;
+        private final Tika tika;
 
         public NetworkedProducerConsumerServiceImpl(String destination) {
             this.destination = Paths.get(destination);
+            this.tika = new Tika();
         }
 
         @Override
@@ -78,6 +82,7 @@ public class Consumer {
             return new StreamObserver<>() {
                 private OutputStream outputStream;
                 private String fileName;
+                private Path filePath;
 
                 @Override
                 public void onNext(FileChunk value) {
@@ -88,30 +93,36 @@ public class Consumer {
                                 responseObserver.onError(new StatusRuntimeException(Status.INVALID_ARGUMENT.withDescription("Filename is missing in the first chunk")));
                                 return;
                             }
-                            System.out.println("Receiving file: " + fileName);
-                            Files.createDirectories(destination);
-                            Path filePath = destination.resolve(fileName);
-                            outputStream = Files.newOutputStream(filePath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-                        }
 
-                        if (outputStream != null && !value.getData().isEmpty()) {
-                            outputStream.write(value.getData().toByteArray());
+                            byte[] firstData = value.getData().toByteArray();
+                            String mimeType = tika.detect(firstData);
+
+                            if (mimeType == null || !mimeType.startsWith("video/")) {
+                                System.err.println("Rejected file " + fileName + " because it is not a video. Detected type: " + mimeType);
+                                responseObserver.onError(new StatusRuntimeException(Status.INVALID_ARGUMENT.withDescription("File is not a video. Detected type: " + mimeType)));
+                                return;
+                            }
+
+                            System.out.println("Receiving file: " + fileName + " (type: " + mimeType + ")");
+                            Files.createDirectories(destination);
+                            filePath = destination.resolve(fileName);
+                            outputStream = Files.newOutputStream(filePath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                            outputStream.write(firstData);
+                        } else {
+                            if (outputStream != null && !value.getData().isEmpty()) {
+                                outputStream.write(value.getData().toByteArray());
+                            }
                         }
                     } catch (IOException e) {
                         responseObserver.onError(e);
+                        closeStreamAndDeleteFile();
                     }
                 }
 
                 @Override
                 public void onError(Throwable t) {
                     System.err.println("Error receiving file: " + t.getMessage());
-                    if (outputStream != null) {
-                        try {
-                            outputStream.close();
-                        } catch (IOException e) {
-                            // ignore
-                        }
-                    }
+                    closeStreamAndDeleteFile();
                 }
 
                 @Override
@@ -130,6 +141,19 @@ public class Consumer {
                         responseObserver.onCompleted();
                     } catch (IOException e) {
                         responseObserver.onError(e);
+                    }
+                }
+
+                private void closeStreamAndDeleteFile() {
+                    try {
+                        if (outputStream != null) {
+                            outputStream.close();
+                        }
+                        if (filePath != null && Files.exists(filePath)) {
+                            Files.delete(filePath);
+                        }
+                    } catch (IOException e) {
+                        System.err.println("Error during file cleanup: " + e.getMessage());
                     }
                 }
             };
