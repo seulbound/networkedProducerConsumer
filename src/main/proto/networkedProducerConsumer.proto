@@ -1,21 +1,22 @@
 syntax = "proto3";
 
-package networkedProducerConsumer;
+package video;
 
 option java_multiple_files = true;
-option java_package = "org.example.networkedProducerConsumer";
-option java_outer_classname = "NetworkedProducerConsumerProto";
+option java_package = "com.videotransfer.grpc";
+option java_outer_classname = "VideoTransferProto";
 
-service NetworkedProducerConsumerService {
-  rpc uploadFile(stream FileChunk) returns (UploadStatus);
+service VideoTransferService {
+    rpc UploadVideo(stream FileChunk) returns (TransferStatus);
 }
 
 message FileChunk {
-  string fileName = 1;
-  bytes data = 2;
+    string fileName = 1;
+    bytes content = 2;
+    bool isLastChunk = 3;
 }
 
-message UploadStatus {
-  bool success = 1;
-  string message = 2;
+message TransferStatus {
+    string message = 1;
+    bool success = 2;
 }

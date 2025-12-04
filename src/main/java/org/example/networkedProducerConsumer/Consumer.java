@@ -1,162 +1,201 @@
 package org.example.networkedProducerConsumer;
 
+import com.videotransfer.grpc.*;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
-import io.grpc.Status;
-import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
-import org.apache.tika.Tika;
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.TilePane;
+import javafx.scene.layout.VBox;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
+import javafx.scene.media.MediaView;
+import javafx.stage.Stage;
+import javafx.util.Duration;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class Consumer {
-    private final int port;
-    private final Server server;
-    private final ExecutorService executor;
+public class Consumer extends Application {
 
-    public Consumer(int port, int numThreads, String destination) {
-        this.port = port;
-        this.executor = Executors.newFixedThreadPool(numThreads);
-        this.server = ServerBuilder.forPort(port)
-                .addService(new NetworkedProducerConsumerServiceImpl(destination))
-                .executor(executor)
-                .build();
+    private static final int PORT = 50051;
+    private static final String OUTPUT_DIR = "folder1";
+    private TilePane tilePane;
+    private static int CONSUMER_THREADS = 4;
+
+    public static void main(String[] args) {
+        if (args.length > 0) CONSUMER_THREADS = Integer.parseInt(args[0]);
+        new File(OUTPUT_DIR).mkdirs();
+        launch(args);
     }
 
-    public void start() throws IOException {
-        server.start();
-        System.out.println("Consumer server started, listening on " + port);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.err.println("*** shutting down gRPC server since JVM is shutting down");
-            Consumer.this.stop();
-            System.err.println("*** server shut down");
-        }));
+    @Override
+    public void start(Stage primaryStage) {
+        tilePane = new TilePane();
+        tilePane.setHgap(10);
+        tilePane.setVgap(10);
+        tilePane.setPrefColumns(4);
+
+        ScrollPane scrollPane = new ScrollPane(tilePane);
+        scrollPane.setFitToWidth(true);
+
+        Scene scene = new Scene(scrollPane, 800, 600);
+        primaryStage.setTitle("Video Consumer Queue");
+        primaryStage.setScene(scene);
+        primaryStage.show();
+
+        loadExistingVideos();
+        startGrpcServer();
     }
 
-    public void stop() {
-        if (server != null) {
-            server.shutdown();
-        }
-        if (executor != null) {
-            executor.shutdown();
+    private void loadExistingVideos() {
+        File outputDirectory = new File(OUTPUT_DIR);
+        if (outputDirectory.exists() && outputDirectory.isDirectory()) {
+            File[] videoFiles = outputDirectory.listFiles((dir, name) ->
+                    name.toLowerCase().endsWith(".mp4") ||
+                    name.toLowerCase().endsWith(".mov") ||
+                    name.toLowerCase().endsWith(".avi") ||
+                    name.toLowerCase().endsWith(".mkv")
+            );
+            if (videoFiles != null) {
+                for (File videoFile : videoFiles) {
+                    addVideoToGallery(videoFile);
+                }
+            }
         }
     }
 
-    public void blockUntilShutdown() throws InterruptedException {
-        if (server != null) {
-            server.awaitTermination();
-        }
+    private void startGrpcServer() {
+        new Thread(() -> {
+            try {
+                Server server = ServerBuilder.forPort(PORT)
+                        .executor(Executors.newFixedThreadPool(CONSUMER_THREADS))
+                        .addService(new VideoTransferServiceImpl())
+                        .build()
+                        .start();
+                System.out.println("Consumer Server started on port " + PORT);
+                server.awaitTermination();
+            } catch (IOException | InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
-    public static void main(String[] args) throws IOException, InterruptedException {
-        if (args.length < 3) {
-            System.err.println("Usage: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Consumer <port> <threads> <destinationFolder>");
-            System.exit(1);
-        }
-        int port = Integer.parseInt(args[0]);
-        int numThreads = Integer.parseInt(args[1]);
-        String destination = args[2];
-        final Consumer consumer = new Consumer(port, numThreads, destination);
-        consumer.start();
-        consumer.blockUntilShutdown();
+    public void addVideoToGallery(File videoFile) {
+        Platform.runLater(() -> {
+            try {
+                VideoThumbnail thumbnail = new VideoThumbnail(videoFile);
+                tilePane.getChildren().add(thumbnail);
+            } catch (Exception e) {
+                System.err.println("Error loading video UI: " + e.getMessage());
+            }
+        });
     }
 
-    private static class NetworkedProducerConsumerServiceImpl extends NetworkedProducerConsumerServiceGrpc.NetworkedProducerConsumerServiceImplBase {
-        private final Path destination;
-        private final Tika tika;
-
-        public NetworkedProducerConsumerServiceImpl(String destination) {
-            this.destination = Paths.get(destination);
-            this.tika = new Tika();
-        }
-
+    private class VideoTransferServiceImpl extends VideoTransferServiceGrpc.VideoTransferServiceImplBase {
         @Override
-        public StreamObserver<FileChunk> uploadFile(final StreamObserver<UploadStatus> responseObserver) {
-            return new StreamObserver<>() {
-                private OutputStream outputStream;
-                private String fileName;
-                private Path filePath;
+        public StreamObserver<FileChunk> uploadVideo(StreamObserver<TransferStatus> responseObserver) {
+            return new StreamObserver<FileChunk>() {
+                FileOutputStream fos;
+                String fileName;
+                File finalFile;
 
                 @Override
-                public void onNext(FileChunk value) {
+                public void onNext(FileChunk chunk) {
                     try {
-                        if (fileName == null) {
-                            fileName = value.getFileName();
-                            if (fileName.isEmpty()) {
-                                responseObserver.onError(new StatusRuntimeException(Status.INVALID_ARGUMENT.withDescription("Filename is missing in the first chunk")));
-                                return;
-                            }
-
-                            byte[] firstData = value.getData().toByteArray();
-                            String mimeType = tika.detect(firstData);
-
-                            if (mimeType == null || !mimeType.startsWith("video/")) {
-                                System.err.println("Rejected file " + fileName + " because it is not a video. Detected type: " + mimeType);
-                                responseObserver.onError(new StatusRuntimeException(Status.INVALID_ARGUMENT.withDescription("File is not a video. Detected type: " + mimeType)));
-                                return;
-                            }
-
-                            System.out.println("Receiving file: " + fileName + " (type: " + mimeType + ")");
-                            Files.createDirectories(destination);
-                            filePath = destination.resolve(fileName);
-                            outputStream = Files.newOutputStream(filePath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-                            outputStream.write(firstData);
-                        } else {
-                            if (outputStream != null && !value.getData().isEmpty()) {
-                                outputStream.write(value.getData().toByteArray());
-                            }
+                        if (fos == null) {
+                            fileName = chunk.getFileName();
+                            finalFile = Paths.get(OUTPUT_DIR, fileName).toFile();
+                            fos = new FileOutputStream(finalFile);
                         }
+                        fos.write(chunk.getContent().toByteArray());
                     } catch (IOException e) {
-                        responseObserver.onError(e);
-                        closeStreamAndDeleteFile();
+                        onError(e);
                     }
                 }
 
                 @Override
                 public void onError(Throwable t) {
-                    System.err.println("Error receiving file: " + t.getMessage());
-                    closeStreamAndDeleteFile();
+                    System.err.println("Upload error: " + t.getMessage());
+                    try { if (fos != null) fos.close(); } catch (IOException e) { /* ignored */ }
                 }
 
                 @Override
                 public void onCompleted() {
                     try {
-                        if (outputStream != null) {
-                            outputStream.close();
-                        }
-                        if (fileName != null) {
-                            responseObserver.onNext(UploadStatus.newBuilder().setSuccess(true).setMessage("File uploaded successfully: " + fileName).build());
-                            System.out.println("File received: " + fileName);
-                        } else {
-                            responseObserver.onNext(UploadStatus.newBuilder().setSuccess(false).setMessage("No file data received.").build());
-                            System.out.println("Upload completed without receiving any file.");
-                        }
+                        if (fos != null) fos.close();
+                        TransferStatus status = TransferStatus.newBuilder()
+                                .setSuccess(true).setMessage("Upload Complete").build();
+                        responseObserver.onNext(status);
                         responseObserver.onCompleted();
-                    } catch (IOException e) {
-                        responseObserver.onError(e);
-                    }
-                }
 
-                private void closeStreamAndDeleteFile() {
-                    try {
-                        if (outputStream != null) {
-                            outputStream.close();
-                        }
-                        if (filePath != null && Files.exists(filePath)) {
-                            Files.delete(filePath);
-                        }
+                        addVideoToGallery(finalFile);
+
                     } catch (IOException e) {
-                        System.err.println("Error during file cleanup: " + e.getMessage());
+                        onError(e);
                     }
                 }
             };
+        }
+    }
+
+    private class VideoThumbnail extends VBox {
+        private MediaPlayer player;
+        private MediaView mediaView;
+
+        public VideoThumbnail(File file) {
+            String mediaUrl = file.toURI().toString();
+            Media media = new Media(mediaUrl);
+            player = new MediaPlayer(media);
+            mediaView = new MediaView(player);
+
+            mediaView.setFitWidth(200);
+            mediaView.setPreserveRatio(true);
+
+            Label fileNameLabel = new Label(file.getName());
+
+            this.getChildren().addAll(mediaView, fileNameLabel);
+            this.setStyle("-fx-border-color: black; -fx-border-width: 2;");
+            this.setAlignment(Pos.CENTER);
+
+            this.setOnMouseEntered(e -> {
+                player.setStartTime(Duration.ZERO);
+                player.setStopTime(Duration.seconds(10));
+                player.play();
+            });
+
+            this.setOnMouseExited(e -> {
+                player.stop();
+                player.seek(Duration.ZERO);
+            });
+
+            this.setOnMouseClicked(e -> playFullScreen(mediaUrl));
+        }
+
+        private void playFullScreen(String url) {
+            Stage stage = new Stage();
+            MediaPlayer mp = new MediaPlayer(new Media(url));
+            MediaView mv = new MediaView(mp);
+            mv.fitWidthProperty().bind(stage.widthProperty());
+            mv.fitHeightProperty().bind(stage.heightProperty());
+            mv.setPreserveRatio(true);
+
+            VBox root = new VBox(mv);
+            root.setAlignment(Pos.CENTER);
+            Scene s = new Scene(root);
+            stage.setScene(s);
+            stage.show();
+
+            mp.play();
+            stage.setOnCloseRequest(ev -> mp.dispose());
         }
     }
 }
