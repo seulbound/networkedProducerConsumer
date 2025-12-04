@@ -4,6 +4,6 @@ To run the program:
 
 Build with mvn clean install
 
-Run the consumer with: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Consumer <port> <threads> <destination folder>
+Run the consumer with: mvn javafx:run -Djavafx.run.arguments=<threads>
 
-Run the producer with: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer <server> <port> <threads> <source folder>
+Run the producer with: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer <server> <threads> <queue length> <source folder(s)>
