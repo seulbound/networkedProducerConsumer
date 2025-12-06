@@ -6,9 +6,9 @@ Ensure that Java 23+ is used.
 
 Build with mvn clean install
 
-Run the consumer with: mvn javafx:run -Djavafx.run.arguments=<threads>
+Run the consumer with: mvn javafx:run -Djavafx.run.arguments=(threads)
 
-Run the producer with: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer <server> <threads/folder count> <queue length> <source folder(s)>
+Run the producer with: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer (server) (threads/folder count) (queue length) (source folder(s))
 
 The destination folder for the consumer is set to be "folder1" in the root directory.
 
