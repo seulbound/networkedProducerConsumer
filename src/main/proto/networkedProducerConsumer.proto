@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package video;
+
+option java_multiple_files = true;
+option java_package = "com.videotransfer.grpc";
+option java_outer_classname = "VideoTransferProto";
+
+service VideoTransferService {
+    rpc UploadVideo(stream FileChunk) returns (TransferStatus);
+}
+
+message FileChunk {
+    string fileName = 1;
+    bytes content = 2;
+    bool isLastChunk = 3;
+    string sha256 = 4;
+}
+
+message TransferStatus {
+    string message = 1;
+    bool success = 2;
+}
