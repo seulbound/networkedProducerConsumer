@@ -189,17 +189,36 @@ public class Consumer extends Application {
                 public void onNext(FileChunk chunk) {
                     try {
                         if (fos == null) {
-                            fileName = chunk.getFileName();
+                            String originalFileName = chunk.getFileName();
                             sha256 = chunk.getSha256();
                             if (fileHashes.containsValue(sha256)) {
-                                TransferStatus status = TransferStatus.newBuilder().setSuccess(false).setMessage("Duplicate file: " + fileName).build();
+                                TransferStatus status = TransferStatus.newBuilder().setSuccess(false).setMessage("Duplicate file: " + originalFileName).build();
                                 responseObserver.onNext(status);
                                 responseObserver.onCompleted();
                                 return;
                             }
 
-                            finalFile = Paths.get(OUTPUT_DIR, fileName).toFile();
-                            fos = new FileOutputStream(finalFile);
+                            File outputFile = Paths.get(OUTPUT_DIR, originalFileName).toFile();
+                            int counter = 1;
+                            String newFileName = originalFileName;
+                            while (outputFile.exists()) {
+                                String nameWithoutExtension;
+                                String extension;
+                                int dotIndex = originalFileName.lastIndexOf('.');
+                                if (dotIndex != -1) {
+                                    nameWithoutExtension = originalFileName.substring(0, dotIndex);
+                                    extension = originalFileName.substring(dotIndex);
+                                } else {
+                                    nameWithoutExtension = originalFileName;
+                                    extension = "";
+                                }
+                                newFileName = nameWithoutExtension + " (" + counter++ + ")" + extension;
+                                outputFile = Paths.get(OUTPUT_DIR, newFileName).toFile();
+                            }
+
+                            this.fileName = newFileName;
+                            this.finalFile = outputFile;
+                            fos = new FileOutputStream(this.finalFile);
                         }
                         fos.write(chunk.getContent().toByteArray());
                     } catch (IOException e) {
