@@ -7,10 +7,12 @@ import com.videotransfer.grpc.VideoTransferServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import org.apache.tika.Tika;
 
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.concurrent.*;
 
 public class Producer {
@@ -52,16 +54,27 @@ public class Producer {
 
     private void scanFolder(String folderPath) {
         File folder = new File(folderPath);
-        File[] files = folder.listFiles((dir, name) -> name.endsWith(".mp4") || name.endsWith(".mkv"));
+        File[] files = folder.listFiles();
 
         if (files == null) return;
 
+        Tika tika = new Tika();
+
         for (File f : files) {
-            boolean added = transferQueue.offer(f);
-            if (added) {
-                System.out.println("[Producer] Added to queue: " + f.getName());
-            } else {
-                System.out.println("[Producer] Queue full ("+queueCapacity+"). Ignored: " + f.getName());
+            if (f.isFile()) {
+                try {
+                    String mimeType = tika.detect(f);
+                    if (mimeType != null && mimeType.startsWith("video/")) {
+                        boolean added = transferQueue.offer(f);
+                        if (added) {
+                            System.out.println("[Producer] Added to queue: " + f.getName() + " (type: " + mimeType + ")");
+                        } else {
+                            System.out.println("[Producer] Queue full (" + queueCapacity + "). Ignored: " + f.getName());
+                        }
+                    }
+                } catch (IOException e) {
+                    System.err.println("Error detecting file type for " + f.getName() + ": " + e.getMessage());
+                }
             }
         }
     }

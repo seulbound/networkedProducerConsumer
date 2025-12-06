@@ -21,7 +21,7 @@ import javafx.util.Duration;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.concurrent.Executors;
 
 public class Consumer extends Application {
@@ -54,6 +54,45 @@ public class Consumer extends Application {
 
         loadExistingVideos();
         startGrpcServer();
+        startFileWatcher();
+    }
+
+    private void startFileWatcher() {
+        new Thread(() -> {
+            try {
+                WatchService watchService = FileSystems.getDefault().newWatchService();
+                Paths.get(OUTPUT_DIR).register(watchService, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE);
+
+                WatchKey key;
+                while ((key = watchService.take()) != null) {
+                    for (WatchEvent<?> event : key.pollEvents()) {
+                        if (event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
+                            try {
+                                Thread.sleep(100);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                            File newFile = Paths.get(OUTPUT_DIR, event.context().toString()).toFile();
+                            addVideoToGallery(newFile);
+                        } else if (event.kind() == StandardWatchEventKinds.ENTRY_DELETE) {
+                            removeVideoFromGallery(event.context().toString());
+                        }
+                    }
+                    key.reset();
+                }
+            } catch (IOException | InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private void removeVideoFromGallery(String fileName) {
+        Platform.runLater(() -> tilePane.getChildren().removeIf(node -> {
+            if (node instanceof VideoThumbnail) {
+                return ((VideoThumbnail) node).getFileName().equals(fileName);
+            }
+            return false;
+        }));
     }
 
     private void loadExistingVideos() {
@@ -91,6 +130,11 @@ public class Consumer extends Application {
 
     public void addVideoToGallery(File videoFile) {
         Platform.runLater(() -> {
+            for (javafx.scene.Node node : tilePane.getChildren()) {
+                if (node instanceof VideoThumbnail && ((VideoThumbnail) node).getFileName().equals(videoFile.getName())) {
+                    return;
+                }
+            }
             try {
                 VideoThumbnail thumbnail = new VideoThumbnail(videoFile);
                 tilePane.getChildren().add(thumbnail);
@@ -148,10 +192,12 @@ public class Consumer extends Application {
     }
 
     private class VideoThumbnail extends VBox {
+        private final String fileName;
         private MediaPlayer player;
         private MediaView mediaView;
 
         public VideoThumbnail(File file) {
+            this.fileName = file.getName();
             String mediaUrl = file.toURI().toString();
             Media media = new Media(mediaUrl);
             player = new MediaPlayer(media);
@@ -178,6 +224,10 @@ public class Consumer extends Application {
             });
 
             this.setOnMouseClicked(e -> playFullScreen(mediaUrl));
+        }
+
+        public String getFileName() {
+            return fileName;
         }
 
         private void playFullScreen(String url) {
