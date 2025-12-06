@@ -81,7 +81,7 @@ public class Producer {
                         if (currentCount <= queueCapacity) {
                             try {
                                 transferQueue.put(f);
-                                System.out.println("[Producer] Added to queue: " + f.getName() + " (type: " + mimeType + ")");
+                                System.out.println("[Producer] Added to queue: " + f.getName());
                             } catch (InterruptedException e) {
                                 filesQueuedCount.decrementAndGet();
                                 System.err.println("Producer thread interrupted, could not add file to queue: " + f.getName());
@@ -180,7 +180,7 @@ public class Producer {
 
     public static void main(String[] args) {
         if (args.length < 4) {
-            System.out.println("Usage: Producer <SERVER_HOST> <P_Threads> <Q_Size> <Folder_Path1> <Folder_Path2>...");
+            System.out.println("Usage: java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer <Server> <Threads> <Queue Size> <Source Folder(s)>");
             return;
         }
 
@@ -193,5 +193,7 @@ public class Producer {
 
         Producer app = new Producer(p, q);
         app.start(folders);
+
+
     }
 }

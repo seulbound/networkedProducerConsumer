@@ -26,8 +26,8 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executors;
 
 public class Consumer extends Application {
@@ -36,7 +36,7 @@ public class Consumer extends Application {
     private static final String OUTPUT_DIR = "folder1";
     private TilePane tilePane;
     private static int CONSUMER_THREADS = 4;
-    private final Set<String> receivedFileHashes = Collections.synchronizedSet(new HashSet<>());
+    private final Map<String, String> fileHashes = Collections.synchronizedMap(new HashMap<>());
 
 
     public static void main(String[] args) {
@@ -95,6 +95,7 @@ public class Consumer extends Application {
     }
 
     private void removeVideoFromGallery(String fileName) {
+        fileHashes.remove(fileName);
         Platform.runLater(() -> tilePane.getChildren().removeIf(node -> {
             if (node instanceof VideoThumbnail) {
                 return ((VideoThumbnail) node).getFileName().equals(fileName);
@@ -116,7 +117,7 @@ public class Consumer extends Application {
                 for (File videoFile : videoFiles) {
                     try {
                         String sha256 = calculateSHA256(videoFile);
-                        receivedFileHashes.add(sha256);
+                        fileHashes.put(videoFile.getName(), sha256);
                         addVideoToGallery(videoFile);
                     } catch (IOException | NoSuchAlgorithmException e) {
                         System.err.println("Error calculating hash for existing file: " + videoFile.getName());
@@ -151,7 +152,7 @@ public class Consumer extends Application {
                         .addService(new VideoTransferServiceImpl())
                         .build()
                         .start();
-                System.out.println("\n\nConsumer Server started on port " + PORT);
+                System.out.println("\n\nConsumer started on port " + PORT);
                 server.awaitTermination();
             } catch (IOException | InterruptedException e) {
                 e.printStackTrace();
@@ -190,7 +191,7 @@ public class Consumer extends Application {
                         if (fos == null) {
                             fileName = chunk.getFileName();
                             sha256 = chunk.getSha256();
-                            if (receivedFileHashes.contains(sha256)) {
+                            if (fileHashes.containsValue(sha256)) {
                                 TransferStatus status = TransferStatus.newBuilder().setSuccess(false).setMessage("Duplicate file: " + fileName).build();
                                 responseObserver.onNext(status);
                                 responseObserver.onCompleted();
@@ -217,7 +218,7 @@ public class Consumer extends Application {
                     try {
                         if (fos != null) {
                             fos.close();
-                            receivedFileHashes.add(sha256);
+                            fileHashes.put(fileName, sha256);
                             TransferStatus status = TransferStatus.newBuilder()
                                     .setSuccess(true).setMessage("Upload Complete").build();
                             responseObserver.onNext(status);
