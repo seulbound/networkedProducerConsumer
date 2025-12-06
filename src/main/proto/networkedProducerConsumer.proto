@@ -15,7 +15,6 @@ message FileChunk {
     bytes content = 2;
     bool isLastChunk = 3;
     string sha256 = 4;
-    string pHash = 5;
 }
 
 message TransferStatus {

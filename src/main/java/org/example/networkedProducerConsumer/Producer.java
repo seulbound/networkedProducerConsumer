@@ -7,11 +7,6 @@ import com.videotransfer.grpc.VideoTransferServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
-import io.metaloom.video4j.Video;
-import io.metaloom.video4j.Video4j;
-import io.metaloom.video4j.fingerprint.v2.MultiSectorVideoFingerprinter;
-import io.metaloom.video4j.fingerprint.v2.impl.MultiSectorVideoFingerprinterImpl;
-import io.metaloom.video4j.fingerprint.v2.MultiSectorFingerprint;
 import org.apache.tika.Tika;
 
 import java.io.BufferedInputStream;
@@ -138,20 +133,6 @@ public class Producer {
         return sb.toString();
     }
 
-    private String calculatePHash(File file) {
-        try {
-            Video4j.init();
-            MultiSectorVideoFingerprinter gen = new MultiSectorVideoFingerprinterImpl();
-            try (Video video = Video.open(file.getAbsolutePath())) {
-                MultiSectorFingerprint fingerprint = gen.hash(video);
-                return fingerprint.hex();
-            }
-        } catch (Exception e) {
-            System.err.println("Error calculating pHash for " + file.getName() + ": " + e.getMessage());
-            return null;
-        }
-    }
-
     private void sendFile(VideoTransferServiceGrpc.VideoTransferServiceStub stub, File file) {
         CountDownLatch finishLatch = new CountDownLatch(1);
 
@@ -163,20 +144,17 @@ public class Producer {
 
             @Override
             public void onError(Throwable t) {
-                System.err.println("Transfer Failed: " + t.getMessage());
                 finishLatch.countDown();
             }
 
             @Override
             public void onCompleted() {
-                System.out.println("Transfer Finished: " + file.getName());
                 finishLatch.countDown();
             }
         });
 
         try (BufferedInputStream bInputStream = new BufferedInputStream(new FileInputStream(file))) {
             String sha256 = calculateSHA256(file);
-            String pHash = calculatePHash(file);
 
             byte[] buffer = new byte[1024 * 512]; // 512KB chunks
             int bytesRead;
@@ -188,9 +166,6 @@ public class Producer {
                         .setIsLastChunk(false);
                 if (firstChunk) {
                     chunkBuilder.setSha256(sha256);
-                    if (pHash != null) {
-                        chunkBuilder.setPHash(pHash);
-                    }
                     firstChunk = false;
                 }
                 requestObserver.onNext(chunkBuilder.build());

@@ -4,11 +4,6 @@ import com.videotransfer.grpc.*;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.stub.StreamObserver;
-import io.metaloom.video4j.Video;
-import io.metaloom.video4j.Video4j;
-import io.metaloom.video4j.fingerprint.v2.MultiSectorFingerprint;
-import io.metaloom.video4j.fingerprint.v2.MultiSectorVideoFingerprinter;
-import io.metaloom.video4j.fingerprint.v2.impl.MultiSectorVideoFingerprinterImpl;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
@@ -42,7 +37,6 @@ public class Consumer extends Application {
     private TilePane tilePane;
     private static int CONSUMER_THREADS = 4;
     private final Set<String> receivedFileHashes = Collections.synchronizedSet(new HashSet<>());
-    private final Set<String> receivedFilePHashes = Collections.synchronizedSet(new HashSet<>());
 
 
     public static void main(String[] args) {
@@ -123,10 +117,6 @@ public class Consumer extends Application {
                     try {
                         String sha256 = calculateSHA256(videoFile);
                         receivedFileHashes.add(sha256);
-                        String pHash = calculatePHash(videoFile);
-                        if (pHash != null) {
-                            receivedFilePHashes.add(pHash);
-                        }
                         addVideoToGallery(videoFile);
                     } catch (IOException | NoSuchAlgorithmException e) {
                         System.err.println("Error calculating hash for existing file: " + videoFile.getName());
@@ -151,20 +141,6 @@ public class Consumer extends Application {
             sb.append(Integer.toString((aByte & 0xff) + 0x100, 16).substring(1));
         }
         return sb.toString();
-    }
-
-    private String calculatePHash(File file) {
-        try {
-            Video4j.init();
-            MultiSectorVideoFingerprinter gen = new MultiSectorVideoFingerprinterImpl();
-            try (Video video = Video.open(file.getAbsolutePath())) {
-                MultiSectorFingerprint fingerprint = gen.hash(video);
-                return fingerprint.hex();
-            }
-        } catch (Exception e) {
-            System.err.println("Error calculating pHash for " + file.getName() + ": " + e.getMessage());
-            return null;
-        }
     }
 
     private void startGrpcServer() {
@@ -207,23 +183,21 @@ public class Consumer extends Application {
                 String fileName;
                 File finalFile;
                 String sha256;
-                String pHash;
 
                 @Override
                 public void onNext(FileChunk chunk) {
                     try {
                         if (fos == null) {
+                            fileName = chunk.getFileName();
                             sha256 = chunk.getSha256();
-                            pHash = chunk.getPHash();
-                            if (receivedFileHashes.contains(sha256) || (pHash != null && !pHash.isEmpty() && receivedFilePHashes.contains(pHash))) {
+                            if (receivedFileHashes.contains(sha256)) {
                                 TransferStatus status = TransferStatus.newBuilder()
-                                        .setSuccess(false).setMessage("Duplicate file").build();
+                                        .setSuccess(false).setMessage("Duplicate file: " + fileName).build();
                                 responseObserver.onNext(status);
                                 responseObserver.onCompleted();
                                 return;
                             }
 
-                            fileName = chunk.getFileName();
                             finalFile = Paths.get(OUTPUT_DIR, fileName).toFile();
                             fos = new FileOutputStream(finalFile);
                         }
@@ -244,10 +218,6 @@ public class Consumer extends Application {
                     try {
                         if (fos != null) {
                             fos.close();
-                            receivedFileHashes.add(sha256);
-                            if (pHash != null && !pHash.isEmpty()) {
-                                receivedFilePHashes.add(pHash);
-                            }
                             TransferStatus status = TransferStatus.newBuilder()
                                     .setSuccess(true).setMessage("Upload Complete").build();
                             responseObserver.onNext(status);
