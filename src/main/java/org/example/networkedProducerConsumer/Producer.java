@@ -14,6 +14,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Producer {
 
@@ -22,6 +23,8 @@ public class Producer {
     private int pThreads;
     private int queueCapacity;
     private BlockingQueue<File> transferQueue;
+    private final AtomicInteger filesQueuedCount = new AtomicInteger(0);
+
 
     public Producer(int p, int q) {
         this.pThreads = p;
@@ -60,16 +63,33 @@ public class Producer {
 
         Tika tika = new Tika();
 
+        System.out.println("\n\n");
+
         for (File f : files) {
             if (f.isFile()) {
+                if (filesQueuedCount.get() >= queueCapacity) {
+                    System.out.println("[Producer] Total capacity of " + queueCapacity + " files reached. Ignoring remaining files in this folder.");
+                    break;
+                }
+
                 try {
                     String mimeType = tika.detect(f);
                     if (mimeType != null && mimeType.startsWith("video/")) {
-                        boolean added = transferQueue.offer(f);
-                        if (added) {
-                            System.out.println("[Producer] Added to queue: " + f.getName() + " (type: " + mimeType + ")");
+                        int currentCount = filesQueuedCount.incrementAndGet();
+                        if (currentCount <= queueCapacity) {
+                            try {
+                                transferQueue.put(f);
+                                System.out.println("[Producer] Added to queue: " + f.getName() + " (type: " + mimeType + ")");
+                            } catch (InterruptedException e) {
+                                filesQueuedCount.decrementAndGet();
+                                System.err.println("Producer thread interrupted, could not add file to queue: " + f.getName());
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
                         } else {
-                            System.out.println("[Producer] Queue full (" + queueCapacity + "). Ignored: " + f.getName());
+                            filesQueuedCount.decrementAndGet();
+                            System.out.println("[Producer] Total capacity of " + queueCapacity + " files reached. Ignoring file: " + f.getName());
+                            break;
                         }
                     }
                 } catch (IOException e) {

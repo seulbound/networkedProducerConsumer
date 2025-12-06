@@ -120,7 +120,7 @@ public class Consumer extends Application {
                         .addService(new VideoTransferServiceImpl())
                         .build()
                         .start();
-                System.out.println("Consumer Server started on port " + PORT);
+                System.out.println("\n\nConsumer Server started on port " + PORT);
                 server.awaitTermination();
             } catch (IOException | InterruptedException e) {
                 e.printStackTrace();
