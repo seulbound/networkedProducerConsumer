@@ -4,6 +4,11 @@ import com.videotransfer.grpc.*;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.stub.StreamObserver;
+import io.metaloom.video4j.Video;
+import io.metaloom.video4j.Video4j;
+import io.metaloom.video4j.fingerprint.v2.MultiSectorFingerprint;
+import io.metaloom.video4j.fingerprint.v2.MultiSectorVideoFingerprinter;
+import io.metaloom.video4j.fingerprint.v2.impl.MultiSectorVideoFingerprinterImpl;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
@@ -19,9 +24,15 @@ import javafx.stage.Stage;
 import javafx.util.Duration;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.Executors;
 
 public class Consumer extends Application {
@@ -30,6 +41,9 @@ public class Consumer extends Application {
     private static final String OUTPUT_DIR = "folder1";
     private TilePane tilePane;
     private static int CONSUMER_THREADS = 4;
+    private final Set<String> receivedFileHashes = Collections.synchronizedSet(new HashSet<>());
+    private final Set<String> receivedFilePHashes = Collections.synchronizedSet(new HashSet<>());
+
 
     public static void main(String[] args) {
         if (args.length > 0) CONSUMER_THREADS = Integer.parseInt(args[0]);
@@ -100,15 +114,56 @@ public class Consumer extends Application {
         if (outputDirectory.exists() && outputDirectory.isDirectory()) {
             File[] videoFiles = outputDirectory.listFiles((dir, name) ->
                     name.toLowerCase().endsWith(".mp4") ||
-                    name.toLowerCase().endsWith(".mov") ||
-                    name.toLowerCase().endsWith(".avi") ||
-                    name.toLowerCase().endsWith(".mkv")
+                            name.toLowerCase().endsWith(".mov") ||
+                            name.toLowerCase().endsWith(".avi") ||
+                            name.toLowerCase().endsWith(".mkv")
             );
             if (videoFiles != null) {
                 for (File videoFile : videoFiles) {
-                    addVideoToGallery(videoFile);
+                    try {
+                        String sha256 = calculateSHA256(videoFile);
+                        receivedFileHashes.add(sha256);
+                        String pHash = calculatePHash(videoFile);
+                        if (pHash != null) {
+                            receivedFilePHashes.add(pHash);
+                        }
+                        addVideoToGallery(videoFile);
+                    } catch (IOException | NoSuchAlgorithmException e) {
+                        System.err.println("Error calculating hash for existing file: " + videoFile.getName());
+                    }
                 }
             }
+        }
+    }
+
+    private String calculateSHA256(File file) throws IOException, NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] byteArray = new byte[1024];
+            int bytesCount;
+            while ((bytesCount = fis.read(byteArray)) != -1) {
+                digest.update(byteArray, 0, bytesCount);
+            }
+        }
+        byte[] bytes = digest.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte aByte : bytes) {
+            sb.append(Integer.toString((aByte & 0xff) + 0x100, 16).substring(1));
+        }
+        return sb.toString();
+    }
+
+    private String calculatePHash(File file) {
+        try {
+            Video4j.init();
+            MultiSectorVideoFingerprinter gen = new MultiSectorVideoFingerprinterImpl();
+            try (Video video = Video.open(file.getAbsolutePath())) {
+                MultiSectorFingerprint fingerprint = gen.hash(video);
+                return fingerprint.hex();
+            }
+        } catch (Exception e) {
+            System.err.println("Error calculating pHash for " + file.getName() + ": " + e.getMessage());
+            return null;
         }
     }
 
@@ -151,11 +206,23 @@ public class Consumer extends Application {
                 FileOutputStream fos;
                 String fileName;
                 File finalFile;
+                String sha256;
+                String pHash;
 
                 @Override
                 public void onNext(FileChunk chunk) {
                     try {
                         if (fos == null) {
+                            sha256 = chunk.getSha256();
+                            pHash = chunk.getPHash();
+                            if (receivedFileHashes.contains(sha256) || (pHash != null && !pHash.isEmpty() && receivedFilePHashes.contains(pHash))) {
+                                TransferStatus status = TransferStatus.newBuilder()
+                                        .setSuccess(false).setMessage("Duplicate file").build();
+                                responseObserver.onNext(status);
+                                responseObserver.onCompleted();
+                                return;
+                            }
+
                             fileName = chunk.getFileName();
                             finalFile = Paths.get(OUTPUT_DIR, fileName).toFile();
                             fos = new FileOutputStream(finalFile);
@@ -175,14 +242,19 @@ public class Consumer extends Application {
                 @Override
                 public void onCompleted() {
                     try {
-                        if (fos != null) fos.close();
-                        TransferStatus status = TransferStatus.newBuilder()
-                                .setSuccess(true).setMessage("Upload Complete").build();
-                        responseObserver.onNext(status);
-                        responseObserver.onCompleted();
+                        if (fos != null) {
+                            fos.close();
+                            receivedFileHashes.add(sha256);
+                            if (pHash != null && !pHash.isEmpty()) {
+                                receivedFilePHashes.add(pHash);
+                            }
+                            TransferStatus status = TransferStatus.newBuilder()
+                                    .setSuccess(true).setMessage("Upload Complete").build();
+                            responseObserver.onNext(status);
+                            responseObserver.onCompleted();
 
-                        addVideoToGallery(finalFile);
-
+                            addVideoToGallery(finalFile);
+                        }
                     } catch (IOException e) {
                         onError(e);
                     }

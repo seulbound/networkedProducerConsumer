@@ -7,12 +7,19 @@ import com.videotransfer.grpc.VideoTransferServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import io.metaloom.video4j.Video;
+import io.metaloom.video4j.Video4j;
+import io.metaloom.video4j.fingerprint.v2.MultiSectorVideoFingerprinter;
+import io.metaloom.video4j.fingerprint.v2.impl.MultiSectorVideoFingerprinterImpl;
+import io.metaloom.video4j.fingerprint.v2.MultiSectorFingerprint;
 import org.apache.tika.Tika;
 
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -114,6 +121,37 @@ public class Producer {
         }
     }
 
+    private String calculateSHA256(File file) throws IOException, NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] byteArray = new byte[1024];
+            int bytesCount;
+            while ((bytesCount = fis.read(byteArray)) != -1) {
+                digest.update(byteArray, 0, bytesCount);
+            }
+        }
+        byte[] bytes = digest.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte aByte : bytes) {
+            sb.append(Integer.toString((aByte & 0xff) + 0x100, 16).substring(1));
+        }
+        return sb.toString();
+    }
+
+    private String calculatePHash(File file) {
+        try {
+            Video4j.init();
+            MultiSectorVideoFingerprinter gen = new MultiSectorVideoFingerprinterImpl();
+            try (Video video = Video.open(file.getAbsolutePath())) {
+                MultiSectorFingerprint fingerprint = gen.hash(video);
+                return fingerprint.hex();
+            }
+        } catch (Exception e) {
+            System.err.println("Error calculating pHash for " + file.getName() + ": " + e.getMessage());
+            return null;
+        }
+    }
+
     private void sendFile(VideoTransferServiceGrpc.VideoTransferServiceStub stub, File file) {
         CountDownLatch finishLatch = new CountDownLatch(1);
 
@@ -137,15 +175,25 @@ public class Producer {
         });
 
         try (BufferedInputStream bInputStream = new BufferedInputStream(new FileInputStream(file))) {
+            String sha256 = calculateSHA256(file);
+            String pHash = calculatePHash(file);
+
             byte[] buffer = new byte[1024 * 512]; // 512KB chunks
             int bytesRead;
+            boolean firstChunk = true;
             while ((bytesRead = bInputStream.read(buffer)) != -1) {
-                FileChunk chunk = FileChunk.newBuilder()
+                FileChunk.Builder chunkBuilder = FileChunk.newBuilder()
                         .setFileName(file.getName())
                         .setContent(ByteString.copyFrom(buffer, 0, bytesRead))
-                        .setIsLastChunk(false)
-                        .build();
-                requestObserver.onNext(chunk);
+                        .setIsLastChunk(false);
+                if (firstChunk) {
+                    chunkBuilder.setSha256(sha256);
+                    if (pHash != null) {
+                        chunkBuilder.setPHash(pHash);
+                    }
+                    firstChunk = false;
+                }
+                requestObserver.onNext(chunkBuilder.build());
             }
             requestObserver.onCompleted();
             finishLatch.await();
