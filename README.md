@@ -15,11 +15,11 @@ The destination folder for the consumer is set to be "folder1" in the root direc
 https://github.com/seulbound/networkedProducerConsumer
 
 Test Case Commands:
-- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer localhost 1 2 nonVideo
-- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer localhost 1 2 sameContentDifferentName
-- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer localhost 2 2 sameNameDifferentContent/folder2 sameNameDifferentContent/folder3
-- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer localhost 1 2 queueOverflow
-- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer localhost 1 3 lackingThreads/folder2 lackingThreads/folder3
+- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer 192.168.1.6 1 2 nonVideo
+- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer 192.168.1.6 1 2 sameContentDifferentName
+- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer 192.168.1.6 2 2 sameNameDifferentContent/folder2 sameNameDifferentContent/folder3
+- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer 192.168.1.6 1 2 queueOverflow
+- java -cp target/networkedProducerConsumer-1.0-SNAPSHOT.jar org.example.networkedProducerConsumer.Producer 192.168.1.6 1 3 lackingThreads/folder2 lackingThreads/folder3
 
 https://drive.google.com/file/d/1iPjKrmuGsaOn1jpyLLQXbtHgWPddAfPX/view?usp=sharing
 The folders in the zip file linked above were placed in root during testing.
