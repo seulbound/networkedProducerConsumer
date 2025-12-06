@@ -191,8 +191,7 @@ public class Consumer extends Application {
                             fileName = chunk.getFileName();
                             sha256 = chunk.getSha256();
                             if (receivedFileHashes.contains(sha256)) {
-                                TransferStatus status = TransferStatus.newBuilder()
-                                        .setSuccess(false).setMessage("Duplicate file: " + fileName).build();
+                                TransferStatus status = TransferStatus.newBuilder().setSuccess(false).setMessage("Duplicate file: " + fileName).build();
                                 responseObserver.onNext(status);
                                 responseObserver.onCompleted();
                                 return;
@@ -218,6 +217,7 @@ public class Consumer extends Application {
                     try {
                         if (fos != null) {
                             fos.close();
+                            receivedFileHashes.add(sha256);
                             TransferStatus status = TransferStatus.newBuilder()
                                     .setSuccess(true).setMessage("Upload Complete").build();
                             responseObserver.onNext(status);

@@ -70,7 +70,7 @@ public class Producer {
         for (File f : files) {
             if (f.isFile()) {
                 if (filesQueuedCount.get() >= queueCapacity) {
-                    System.out.println("[Producer] Total capacity of " + queueCapacity + " files reached. Ignoring remaining files in this folder.");
+                    System.out.println("Total capacity of " + queueCapacity + " files in queue reached.");
                     break;
                 }
 
@@ -139,7 +139,7 @@ public class Producer {
         StreamObserver<FileChunk> requestObserver = stub.uploadVideo(new StreamObserver<TransferStatus>() {
             @Override
             public void onNext(TransferStatus status) {
-                System.out.println("[Consumer Response] " + status.getMessage());
+                System.out.println("[Consumer] " + status.getMessage());
             }
 
             @Override

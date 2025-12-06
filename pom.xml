@@ -126,6 +126,9 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>org.example.networkedProducerConsumer.Consumer</mainClass>
+                    <options>
+                        <option>--enable-native-access=javafx.media</option>
+                    </options>
                 </configuration>
             </plugin>
         </plugins>
